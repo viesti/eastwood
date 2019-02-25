@@ -1,7 +1,8 @@
 (ns eastwood.linters.implicit-dependencies
   (:require [eastwood.copieddeps.dep1.clojure.tools.analyzer.ast :as ast]
             [eastwood.copieddeps.dep9.clojure.tools.namespace.parse :as ns-parse]
-            [eastwood.util :as util]))
+            [eastwood.util :as util]
+            [clojure.set :as set]))
 
 
 (defn var->ns-symbol [var]
@@ -21,8 +22,9 @@
                        'clojure.core)))))
 
 
-(defn implicit-dependencies [{:keys [asts forms] :as x} _]
-  (let [ns-ast (first (util/ns-form-asts asts))
+(defn implicit-dependencies [{:keys [asts forms] :as x} opts]
+  (let [skipping-requires (set (map :when-required (get-in opts [:warning-enable-config :implicit-dependencies])))
+        ns-ast (first (util/ns-form-asts asts))
         ns-decl (first (:raw-forms ns-ast))
         ns-sym (ns-parse/name-from-ns-decl ns-decl)
         namespace-dependency? (conj (ns-parse/deps-from-ns-decl ns-decl)
@@ -30,18 +32,17 @@
                                     ns-sym
                                     ;;clojure core is always included in every namespace, no need to warn about it
                                     'clojure.core)]
-
-
-    (->> asts
-         (mapcat ast/nodes)
-         (keep (fn [expr]
-                 (when (and (= (:op expr) :var)
-                            (not (within-other-ns-macro? expr ns-sym)))
-                   (let [implicit-ns-sym (var->ns-symbol (:var expr))]
-                     (when (not (namespace-dependency? implicit-ns-sym))
+    (when (empty? (set/intersection skipping-requires namespace-dependency?))
+      (->> asts
+           (mapcat ast/nodes)
+           (keep (fn [expr]
+                   (when (and (= (:op expr) :var)
+                              (not (within-other-ns-macro? expr ns-sym)))
+                     (let [implicit-ns-sym (var->ns-symbol (:var expr))]
+                       (when (not (namespace-dependency? implicit-ns-sym))
 ;                       (println "META " (util/enclosing-macros expr))
-                       {:linter :implicit-dependencies
-                        :loc (:env expr)
-                        :implicit-namespace-sym implicit-ns-sym
-                        :msg (format "Var %s refers to namespace %s that isn't explicitly required."
-                                     (:form expr) implicit-ns-sym)}))))))))
+                         {:linter :implicit-dependencies
+                          :loc (:env expr)
+                          :implicit-namespace-sym implicit-ns-sym
+                          :msg (format "Var %s refers to namespace %s that isn't explicitly required."
+                                       (:form expr) implicit-ns-sym)})))))))))

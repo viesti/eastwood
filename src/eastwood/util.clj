@@ -885,7 +885,7 @@ StringWriter."
   (reduce (fn [configs {:keys [linter] :as m}]
             (case linter
               (:constant-test :redefd-vars :unused-ret-vals
-                              :unused-ret-vals-in-try)
+                              :unused-ret-vals-in-try :implicit-dependencies)
               (update-in configs [linter]
                          conj (dissoc m :linter))
               :suspicious-expression
